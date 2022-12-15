@@ -33,7 +33,8 @@ static inline ssize_t search_string_enum_table(
 
 /*
 * All the HTTP stuff may move into a file named http.c
-* (if I can figure out how to share the working path + length without globals)
+* (if I can figure out how to share the working path + length without globals,
+* that may just be what has to happen.)
 */
 
 /*
@@ -55,8 +56,7 @@ static int recv_http_header(int fd, struct http_header *header) {
         }
     }
 
-    if (header->len == sizeof(header->buf)) return -1;
-    else return 0;
+    return header->len == sizeof(header->buf) ? -1 : 0;
 }
 
 static struct http_request parse_http_request(char *http_header) {
@@ -84,22 +84,81 @@ static struct http_request parse_http_request(char *http_header) {
 	return res;
 }
 
-// TODO: Parse % in URLs (for spaces, etc.)
+// decode hexadecimal characters from string
+static inline int hextoc(const char *s) {
+    int r = 0;
+    if (s[0] >= '0' && s[0] <= '9') {
+        r = (s[0] - '0') * 16;
+    } else if ((s[0] | 32) >= 'a' && (s[0] | 32) <= 'f') {
+        r = ((s[0] | 32) - 'a' + 10) * 16;
+    }
+
+    if (s[1] >= '0' && s[1] <= '9') {
+        r += s[1] - '0';
+    } else if ((s[1] | 32) >= 'a' && (s[1] | 32) <= 'f') {
+        r += (s[1] | 32) - 'a' + 10;
+    }
+
+    return r;
+}
+
+/*
+ * If a buffer is given, the decoded URI is copied into it.
+ * This assumes that you know your buffer is large enough for it.
+ */
+static char *decode_percent_encoding(const char *uri, char *buf) {
+    if (!uri) return NULL;
+
+    char *r;
+    if (!buf) {
+        size_t len = 0;
+        for (const char *s = uri; *s; ++len, ++s) {
+            if (*s == '%') s += 2;
+        }
+
+        r = malloc(len + 1);
+        if (!r) return NULL;
+    } else r = buf;
+    
+    {
+        char *s;
+        for (s = r; *uri; ++s, ++uri) {
+            if (*uri == '%') {
+                int c = hextoc(++uri);
+                ++uri;
+                if (c) *s = c; // watch out for null chars!
+                else --s;
+            } else *s = *uri;
+        }
+        *s = '\0';
+    }
+
+    return r;
+}
+
+// This mutates the string we give to it, but that's fine.
 static struct URI parse_uri(char *path) {
-    struct URI ret = {.error = URI_ERROR_NONE};
+    struct URI ret = {.error = 0};
     if (*path == '/') ++path;
     strtok(path, "?"); // tokenize query
     if (*path == '\0') path = "index.html"; // path is root
 
+    // replace passed in path with decoded path
+    path = decode_percent_encoding(path, NULL);
+    if (!path) {
+        ret.error = 500;
+        return ret;
+    }
+
     char pathbuf[PATH_MAX];
     char *abs_path = realpath(path, pathbuf);
     // bad path, or someone is trying to be sneaky...
-    if (!abs_path) ret.error = URI_ERROR_BAD_PATH;
-    else if (strncmp(abs_path, working_path, working_path_len)) ret.error = URI_ERROR_FORBIDDEN;
+    if (!abs_path) ret.error = 404;
+    else if (strncmp(abs_path, working_path, working_path_len)) ret.error = 403;
 
     // Path validity check
     if (stat(abs_path, &ret.filestat) == -1) {
-        ret.error = URI_ERROR_BAD_PATH;
+        ret.error = 404;
     } else {
         // check for directory
     	if (S_ISDIR(ret.filestat.st_mode)) {
@@ -107,17 +166,18 @@ static struct URI parse_uri(char *path) {
             if (len < PATH_MAX - 10) {
         	    strcpy(abs_path + len, "/index.html");
         	    if (stat(abs_path, &ret.filestat) == -1)
-        	        ret.error = URI_ERROR_BAD_PATH;
-            } else ret.error = URI_ERROR_BAD_PATH;
+        	        ret.error = 404;
+            } else ret.error = 404;
     	}
     }
 
     // copy correct path
     strncpy(ret.path, pathbuf + working_path_len, PATH_MAX - working_path_len);
 
-    // copy query into struct
-    char *query = strtok(NULL, "?");
-    if (query) strncpy(ret.query, query, sizeof(ret.query));
+    // decode query
+    decode_percent_encoding(strtok(NULL, "?"), ret.query);
+
+    free(path);
     return ret;
 }
 
@@ -174,17 +234,16 @@ static struct http_response create_response(struct http_request *req) {
         case HTTP_GET: {
             res.connection = CONN_CLOSE;
             if (!res.uri.error) {
-                struct stat statbuf;
                 res.status = 200;
                 res.content = fopen(res.uri.path + 1, "r");
-                if (res.content && !stat(res.uri.path + 1, &statbuf)) {
-                	res.content_length = statbuf.st_size;
+                if (res.content) {
+                	res.content_length = res.uri.filestat.st_size;
                 } else {
                 	res.status = 500;
                 	create_error_page(&res);
                 }
             } else {
-                res.status = 404;
+                res.status = res.uri.error;
                 create_error_page(&res);
             }
         } break;

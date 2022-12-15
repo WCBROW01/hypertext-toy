@@ -26,17 +26,11 @@ struct http_request {
     int error;
 };
 
-enum URI_error {
-    URI_ERROR_NONE,
-    URI_ERROR_BAD_PATH,
-    URI_ERROR_FORBIDDEN
-};
-
 struct URI {
     char path[PATH_MAX];
     char query[4096];
     struct stat filestat;
-    enum URI_error error;
+    int error;
 };
 
 enum connection_type { CONN_CLOSE, CONN_KEEPALIVE };
