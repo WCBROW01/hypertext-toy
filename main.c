@@ -109,8 +109,10 @@ static inline int hextoc(const char *s) {
 static char *decode_percent_encoding(const char *uri, char *buf) {
     if (!uri) return NULL;
 
+    int allocated = 0;
     char *r;
     if (!buf) {
+        allocated = 1;
         size_t len = 0;
         for (const char *s = uri; *s; ++len, ++s) {
             if (*s == '%') s += 2;
@@ -124,6 +126,10 @@ static char *decode_percent_encoding(const char *uri, char *buf) {
         char *s;
         for (s = r; *uri; ++s, ++uri) {
             if (*uri == '%') {
+                if (uri[1] == '\0' || uri[2] == '\0') { // uh oh
+                    if (allocated) free(r);
+                    return NULL;
+                }
                 int c = hextoc(++uri);
                 ++uri;
                 if (c) *s = c; // watch out for null chars!
