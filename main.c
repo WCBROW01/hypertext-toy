@@ -86,18 +86,23 @@ static struct http_request parse_http_request(char *http_header) {
 }
 
 // decode hexadecimal characters from string
+// if an invalid character is found, -1 is returned.
 static inline int hextoc(const char *s) {
-    int r = 0;
+    int r;
     if (s[0] >= '0' && s[0] <= '9') {
         r = (s[0] - '0') * 16;
     } else if ((s[0] | 32) >= 'a' && (s[0] | 32) <= 'f') {
         r = ((s[0] | 32) - 'a' + 10) * 16;
+    } else {
+        return -1;
     }
 
     if (s[1] >= '0' && s[1] <= '9') {
         r += s[1] - '0';
     } else if ((s[1] | 32) >= 'a' && (s[1] | 32) <= 'f') {
         r += (s[1] | 32) - 'a' + 10;
+    } else {
+        return -1;
     }
 
     return r;
@@ -127,11 +132,11 @@ static char *decode_percent_encoding(const char *uri, char *buf) {
         char *s;
         for (s = r; *uri; ++s, ++uri) {
             if (*uri == '%') {
-                if (uri[1] == '\0' || uri[2] == '\0') { // uh oh
+                int c = hextoc(++uri);
+                if (c == -1) { // uh oh
                     if (allocated) free(r);
                     return NULL;
                 }
-                int c = hextoc(++uri);
                 ++uri;
                 if (c) *s = c; // watch out for null chars!
                 else --s;
