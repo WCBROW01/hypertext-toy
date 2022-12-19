@@ -16,6 +16,7 @@
 
 #include "http.h"
 #include "connection.h"
+#include "mime-types.h"
 
 static char working_path[4096];
 static size_t working_path_len;
@@ -165,16 +166,14 @@ static struct URI parse_uri(char *path) {
     // Path validity check
     if (stat(abs_path, &ret.filestat) == -1) {
         ret.error = 404;
-    } else {
-        // check for directory
-    	if (S_ISDIR(ret.filestat.st_mode)) {
-            size_t len = strlen(abs_path);
-            if (len < PATH_MAX - 10) {
-        	    strcpy(abs_path + len, "/index.html");
-        	    if (stat(abs_path, &ret.filestat) == -1)
-        	        ret.error = 404;
-            } else ret.error = 404;
-    	}
+    // figure out if the path is a directory
+    } else if (S_ISDIR(ret.filestat.st_mode)) {
+        size_t len = strlen(abs_path);
+        if (len < PATH_MAX - 10) {
+            strcpy(abs_path + len, "/index.html");
+            if (stat(abs_path, &ret.filestat) == -1)
+                ret.error = 404;
+        } else ret.error = 404;
     }
 
     // copy correct path
@@ -206,9 +205,11 @@ static void create_header(struct http_response *res) {
     res->header.len = snprintf(
         res->header.buf, sizeof(res->header.buf),
         "HTTP/%d.%d %d %s\r\n"
+        "Content-Type: %s\r\n"
         "Content-Length: %ld\r\n"
         "Connection: %s\r\n\r\n",
         res->major_version, res->minor_version, res->status, http_status_str(res->status),
+        res->mime_type ? res->mime_type : "", // if there is none, just don't send a mime type
         res->content_length,
         CONN_TYPE_TABLE[res->connection]
     );
@@ -222,6 +223,7 @@ static void create_error_page(struct http_response *res) {
 static struct http_response create_response(struct http_request *req) {
     struct http_response res = {
         .connection = CONN_CLOSE,
+        .mime_type = "text/html", // mime type of error pages
         .header_sent = 0,
         .content_sent = 0
     };
@@ -243,6 +245,7 @@ static struct http_response create_response(struct http_request *req) {
                 res.status = 200;
                 res.content = fopen(res.uri.path + 1, "r");
                 if (res.content) {
+                    res.mime_type = lookup_mime_type(get_file_ext(res.uri.path));
                 	res.content_length = res.uri.filestat.st_size;
                 } else {
                 	res.status = 500;
