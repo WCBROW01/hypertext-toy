@@ -39,6 +39,7 @@ struct http_response {
     int major_version, minor_version;
     int status, connection;
     struct URI uri;
+    const char *mime_type;
     size_t header_sent;
     struct http_header header;
     size_t content_length, content_sent;
