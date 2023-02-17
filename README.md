@@ -19,6 +19,6 @@ $ ./http-server
 ## Things currently on the todo list
 - [x] Parse % encoding in URIs
 - [x] Add MIME types
-- [ ] Slightly nicer status pages
+- [x] Slightly nicer status pages
 - [ ] Configuration options (config file and CLI arg overrides)
 - [ ] Better program structure

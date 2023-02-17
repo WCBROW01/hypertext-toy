@@ -220,9 +220,20 @@ static void create_header(struct http_response *res) {
     );
 }
 
+static const char *error_format =
+"<!DOCTYPE html>\n"
+"<html>\n"
+"\t<head>\n"
+"\t\t<title>%1$d %2$s</title>\n"
+"\t<head>\n"
+"\t<body>\n"
+"\t\t<h1>%1$d %2$s</h1>\n"
+"\t</body>\n"
+"</html>";
+
 static void create_error_page(struct http_response *res) {
     res->content = fmemopen(NULL, 8192, "w+");
-    res->content_length = fprintf(res->content, "%d %s", res->status, http_status_str(res->status));
+    res->content_length = fprintf(res->content, error_format, res->status, http_status_str(res->status));
 }
 
 static struct http_response create_response(struct http_request *req) {
