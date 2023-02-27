@@ -18,7 +18,7 @@ int load_default_config(void) {
     }
 
     global_config.root_path_len = strlen(global_config.root_path);   
-    global_config.server_port = htons(8080);
+    global_config.server_port = htons(8000);
     return 0;
 }
 
