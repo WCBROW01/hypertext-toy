@@ -21,4 +21,4 @@ $ ./http-server
 - [x] Add MIME types
 - [x] Slightly nicer status pages
 - [ ] Configuration options (config file and CLI arg overrides)
-- [ ] Better program structure
+- [x] Better program structure
