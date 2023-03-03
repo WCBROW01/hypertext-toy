@@ -24,12 +24,6 @@ static inline ssize_t search_string_enum_table(
 }
 
 /*
-* All the HTTP stuff may move into a file named http.c
-* (if I can figure out how to share the working path + length without globals,
-* that may just be what has to happen.)
-*/
-
-/*
  * Returns:
  * 1 if recovery is complete
  * 0 if recovery is incomplete
