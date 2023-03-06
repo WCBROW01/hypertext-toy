@@ -16,6 +16,16 @@ $ make
 $ ./http-server
 ```
 
+## Generating internal documentation
+
+If you have Doxygen installed, you can easily generate and read internal documentation in many formats! By default, HTML and LaTeX files are generated. It is available in the repositories of many Linux distributions.
+
+To generate documentation, just run
+```sh
+$ doxygen
+```
+and you will find documentation present in a subdirectory labeled docs!
+
 ## Things currently on the todo list
 - [x] Parse % encoding in URIs
 - [x] Add MIME types
