@@ -38,8 +38,7 @@ docs/
 *.i*86
 *.x86_64
 *.hex
-moonlander
-ml2-editor
+http-server
 
 # Debug files
 *.dSYM/
