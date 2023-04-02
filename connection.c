@@ -59,7 +59,6 @@ static void ConnectionList_Remove(ConnectionList *list, int index) {
 	shutdown(list->clients[index].fd, SHUT_RDWR);
 	close(list->clients[index].fd);
 	list->clients[index].fd = -1;
-	printf("Freeing connection %d\n", index);
 	free(list->connections[index]);
 	list->connections[index] = NULL; // not specifically required, but will be useful on desctruction
 	list->complete_connections[(list->complete_connections_start + list->num_complete_connections) & (list->connections_len - 1)] = index;
