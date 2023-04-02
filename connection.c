@@ -68,7 +68,7 @@ static void ConnectionList_Remove(ConnectionList *list, int index) {
 }
 
 void ConnectionList_Delete(ConnectionList *list) {
-	--list->num_connections;
+	--list->num_connections; // server is included in this number, it should not be closed with this
 	// close all connections (the operating system will not completely clean up for us since there are sockets involved)
 	for (int i = 1; list->num_connections; ++i)
 		if (list->connections[i]) ConnectionList_Remove(list, i);
