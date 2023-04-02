@@ -1,24 +1,36 @@
+/**
+ * @file connection.c
+ * @author Will Brown
+ * @brief Code for managing HTTP connections
+ * @version 0.1
+ * @date 2023-04-01
+ *
+ * @copyright Copyright (c) 2023 Will Brown
+ */
+
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
 #include <poll.h>
 
-
 #include <sys/socket.h>
 
 #include "connection.h"
 #include "http.h"
 
+/**
+ * @brief List of connections
+ */
 struct ConnectionList {
-	struct pollfd *clients;
-	struct connection **connections; // contain pointers to connections (to save memory, the struct is pretty huge)
-	int connections_len; // length of all arrays
-	int connections_end; // end of the connections array
-	int num_connections; // current number of connections
-	int *complete_connections; // indices of complete connections (to reuse)
-	int num_complete_connections; // number of complete connections
-	int complete_connections_start; // start of the complete connection queue
+	struct pollfd *clients; ///< list of clients for pollfd
+	struct connection **connections; ///< contain pointers to connections (to save memory, the struct is pretty huge)
+	int connections_len; ///< length of all arrays
+	int connections_end; ///< end of the connections array
+	int num_connections; ///< current number of connections
+	int *complete_connections; ///< indices of complete connections (to reuse)
+	int num_complete_connections; ///< number of complete connections
+	int complete_connections_start; ///< start of the complete connection queue
 };
 
 
@@ -44,10 +56,11 @@ ConnectionList *ConnectionList_Create(int server_fd) {
 }
 
 static void ConnectionList_Remove(ConnectionList *list, int index) {
+	shutdown(list->clients[index].fd, SHUT_RDWR);
 	close(list->clients[index].fd);
 	list->clients[index].fd = -1;
 	free(list->connections[index]);
-	list->connections[index] = NULL; // not specifically required, but will be used in error cases
+	list->connections[index] = NULL; // not specifically required, but will be useful on desctruction
 	list->complete_connections[(list->complete_connections_start + list->num_complete_connections) & (list->connections_len - 1)] = index;
 	++list->num_complete_connections;
 	--list->num_connections;

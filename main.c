@@ -19,6 +19,7 @@ int server_fd;
 // I expect myself to keep cleanup simple.
 void cleanup(void) {
 	ConnectionList_Delete(connections);
+	shutdown(server_fd, SHUT_RDWR);
 	close(server_fd);
 }
 
