@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -44,9 +43,23 @@ ConnectionList *ConnectionList_Create(int server_fd) {
     return list;
 }
 
+static void ConnectionList_Remove(ConnectionList *list, int index) {
+	close(list->clients[index].fd);
+	list->clients[index].fd = -1;
+	free(list->connections[index]);
+	list->connections[index] = NULL; // not specifically required, but will be used in error cases
+	list->complete_connections[(list->complete_connections_start + list->num_complete_connections) & (list->connections_len - 1)] = index;
+	++list->num_complete_connections;
+	--list->num_connections;
+}
+
 void ConnectionList_Delete(ConnectionList *list) {
+	// close all connections (the operating system will not completely clean up for us since there are sockets involved)
+	for (int i = 1; list->num_connections; ++i)
+		if (list->connections) ConnectionList_Remove(list, i);
+
 	free(list->clients);
-	free(list->connections); // uhhh just gonna assume everyone was properly serviced for now
+	free(list->connections);
 	free(list->complete_connections);
 	free(list);
 }
@@ -93,15 +106,6 @@ static int ConnectionList_Add(ConnectionList *list, int client_fd) {
 	};
 
 	return 1;
-}
-
-static void ConnectionList_Remove(ConnectionList *list, int index) {
-	close(list->clients[index].fd);
-	list->clients[index].fd = -1;
-	free(list->connections[index]);
-	list->complete_connections[(list->complete_connections_start + list->num_complete_connections) & (list->connections_len - 1)] = index;
-	++list->num_complete_connections;
-	--list->num_connections;
 }
 
 // Return -1 on error, 0 on success
