@@ -3,7 +3,7 @@
  * @author Will Brown
  * @brief Data structure for managing HTTP connections
  * @version 0.1
- * @date 2023-03-03
+ * @date 2023-03-27
  *
  * @copyright Copyright (c) 2023 Will Brown
  */
