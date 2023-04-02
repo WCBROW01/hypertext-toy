@@ -3,7 +3,7 @@
  * @author Will Brown
  * @brief Data structure for managing HTTP connections
  * @version 0.1
- * @date 2023-03-27
+ * @date 2023-04-02
  *
  * @copyright Copyright (c) 2023 Will Brown
  */
@@ -18,11 +18,6 @@
  */
 enum connection_state { STATE_REQ, STATE_RES };
 
-/*
- * Connections are stored in a linked list because the structure is big,
- * and connections get added/removed very frequently.
- */
-
 /**
  * @brief A node in the list of connections.
  */
@@ -36,6 +31,11 @@ struct connection {
 
 /**
  * @brief List of connections
+ * @details Connections are stored as an array of pointers to a connection,
+ * because the structure is big, and connections get added/removed very frequently.
+ * This was previously a linked list, but I wanted a direct mapping between clients and connections.
+ * The internal structure of the list is abstracted away so that it cannot be relied upon,
+ * and is subject to change at any moment.
  */
 typedef struct ConnectionList ConnectionList;
 
