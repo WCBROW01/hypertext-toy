@@ -17,13 +17,13 @@ int server_fd;
 
 // Might have more things if the server gets more complex, but probably not.
 // I expect myself to keep cleanup simple.
-void cleanup(void) {
+static void cleanup(void) {
 	ConnectionList_Delete(connections);
 	shutdown(server_fd, SHUT_RDWR);
 	close(server_fd);
 }
 
-void term_handler(int signum) {
+static void term_handler(int signum) {
 	fprintf(stderr, "Termination requested, server closing.\n");
 	cleanup();
 	struct sigaction act = { .sa_handler = SIG_DFL };
