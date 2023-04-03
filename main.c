@@ -36,10 +36,8 @@ int main(void) {
 	// register signal handlers
 	{
 		struct sigaction act = { .sa_handler = &term_handler };
-		if (sigaction(SIGTERM, &act, NULL) == -1 || sigaction(SIGINT, &act, NULL) == -1) {
-			fprintf(stderr, "Unable to register signal handlers:\n");
-			return 1;
-		}
+		sigaction(SIGTERM, &act, NULL);
+		sigaction(SIGINT, &act, NULL);
 	}
 
 	load_default_config();
