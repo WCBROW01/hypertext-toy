@@ -24,7 +24,7 @@
  */
 struct ConnectionList {
 	struct pollfd *clients; ///< list of clients for pollfd
-	struct connection **connections; ///< contain pointers to connections (to save memory, the struct is pretty huge)
+	struct connection *connections; ///< array of connections (the struct is pretty huge)
 	int connections_len; ///< length of all arrays
 	int connections_end; ///< end of the connections array
 	int num_connections; ///< current number of connections
@@ -59,8 +59,7 @@ static void ConnectionList_Remove(ConnectionList *list, int index) {
 	shutdown(list->clients[index].fd, SHUT_RDWR);
 	close(list->clients[index].fd);
 	list->clients[index].fd = -1;
-	free(list->connections[index]);
-	list->connections[index] = NULL; // not specifically required, but will be useful on desctruction
+	list->connections[index].state = STATE_END;
 	list->complete_connections[(list->complete_connections_start + list->num_complete_connections) & (list->connections_len - 1)] = index;
 	++list->num_complete_connections;
 	--list->num_connections;
@@ -70,7 +69,7 @@ void ConnectionList_Delete(ConnectionList *list) {
 	--list->num_connections; // server is included in this number, it should not be closed with this
 	// close all connections (the operating system will not completely clean up for us since there are sockets involved)
 	for (int i = 1; list->num_connections; ++i)
-		if (list->connections[i]) ConnectionList_Remove(list, i);
+		if (list->connections[i].state == STATE_END) ConnectionList_Remove(list, i);
 
 	free(list->clients);
 	free(list->connections);
@@ -96,21 +95,18 @@ static int ConnectionList_Resize(ConnectionList *list) {
 }
 
 static int ConnectionList_Add(ConnectionList *list, int client_fd) {
-	// Try allocating memory before computing anything to avoid possible leaks
-	struct connection *new_connection = malloc(sizeof(*new_connection));
-	if (!new_connection) return 0;
-	memset(new_connection, 0, sizeof(*new_connection));
-
 	int index;
 	if (list->num_complete_connections > 0) {
 		index = list->complete_connections[list->complete_connections_start++];
 		list->complete_connections_start &= list->connections_len - 1;
 		--list->num_complete_connections;
-	} else {
+	} else if (list->connections_end < list->connections_len) {
 		index = list->connections_end++;
+	} else {
+		return 0;
 	}
 
-	list->connections[index] = new_connection;
+	memset(&list->connections[index], 0, sizeof(list->connections[index]));
 	++list->num_connections;
 
     list->clients[index] = (struct pollfd) {
@@ -137,7 +133,7 @@ int ConnectionList_Poll(ConnectionList *list) {
 
 		for (int i = 1; nevents; ++i) {
 			if (list->clients[i].revents) {
-			    struct connection *curr_conn = list->connections[i];
+			    struct connection *curr_conn = &list->connections[i];
 				if (list->clients[i].revents & POLLIN && curr_conn->state == STATE_REQ) {
 					int result = recv_http_header(list->clients[i].fd, &curr_conn->header);
 					if (result) {

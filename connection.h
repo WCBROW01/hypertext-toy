@@ -16,7 +16,7 @@
 /**
  * @brief enum denoting whether the connection is in the request or response stage
  */
-enum connection_state { STATE_REQ, STATE_RES };
+enum connection_state { STATE_REQ, STATE_RES, STATE_END };
 
 /**
  * @brief A node in the list of connections.
