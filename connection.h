@@ -25,7 +25,7 @@ struct connection {
 	enum connection_state state;
 	union {
 		struct http_header header;
-		struct http_response res;
+		struct http_response *res;
 	};
 };
 

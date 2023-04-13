@@ -70,6 +70,16 @@ struct http_request parse_http_request(char *http_header) {
 	return res;
 }
 
+/**
+ * @brief A parsed URI, with query separated from path and all percent encoded characters decoded.
+ */
+struct URI {
+    char *path; ///< Actual file to serve
+    char *query; ///< Query to process in server (currently unused)
+    struct stat filestat; ///< File status (kept for multiple uses)
+    int error; ///< Error code for parsing URI (if applicable)
+};
+
 // decode hexadecimal characters from string
 // if an invalid character is found, -1 is returned.
 static inline int hextoc(const char *s) {
@@ -134,8 +144,12 @@ static char *decode_percent_encoding(const char *uri, char *buf) {
 }
 
 // This mutates the string we give to it, but that's fine.
-static struct URI parse_uri(char *path) {
-    struct URI ret = {.error = 0};
+static struct URI *parse_uri(char *path) {
+	// allocate and zero
+    struct URI *ret = malloc(sizeof(*ret));
+    if (!ret) return NULL;
+    memset(ret, 0, sizeof(*ret));
+    
     if (*path == '/') ++path;
     strtok(path, "?"); // tokenize query
     if (*path == '\0') path = "index.html"; // path is root
@@ -143,37 +157,59 @@ static struct URI parse_uri(char *path) {
     // replace passed in path with decoded path
     path = decode_percent_encoding(path, NULL);
     if (!path) {
-        ret.error = 500;
+        ret->error = 500;
         return ret;
     }
 
     char pathbuf[4096];
     char *abs_path = realpath(path, pathbuf);
+    size_t abs_path_len = strlen(abs_path);
+    free(path); // done with that
+    
     // bad path, or someone is trying to be sneaky...
-    if (!abs_path) ret.error = 404;
-    else if (strncmp(abs_path, global_config.root_path, global_config.root_path_len)) ret.error = 403;
+    if (!abs_path) ret->error = 404;
+    else if (strncmp(abs_path, global_config.root_path, global_config.root_path_len)) ret->error = 403;
 
     // Path validity check
-    if (stat(abs_path, &ret.filestat) == -1) {
-        ret.error = 404;
+    if (stat(abs_path, &ret->filestat) == -1) {
+        ret->error = 404;
     // figure out if the path is a directory
-    } else if (S_ISDIR(ret.filestat.st_mode)) {
-        size_t len = strlen(abs_path);
-        if (len < 4085) {
-            strcpy(abs_path + len, "/index.html");
-            if (stat(abs_path, &ret.filestat) == -1)
-                ret.error = 404;
-        } else ret.error = 404;
+    } else if (S_ISDIR(ret->filestat.st_mode)) {
+        if (abs_path_len < 4085) {
+            strcpy(abs_path + abs_path_len, "/index.html");
+            abs_path_len += strlen("/index.html");
+            if (stat(abs_path, &ret->filestat) == -1)
+                ret->error = 404;
+        } else ret->error = 404;
     }
 
-    // copy correct path
-    strncpy(ret.path, pathbuf + global_config.root_path_len, 4096 - global_config.root_path_len);
+    // copy correct path to new buffer
+    size_t path_len = abs_path_len - global_config.root_path_len;
+    ret->path = malloc(path_len + 1);
+    if (!ret->path) {
+        ret->error = 500;
+        return ret;
+    }
+    
+    strncpy(ret->path, pathbuf + global_config.root_path_len, path_len);
+    ret->path[path_len] = '\0';
 
     // decode query
-    decode_percent_encoding(strtok(NULL, "?"), ret.query);
+    char *query = strtok(NULL, "?");
+    if (query) {
+        ret->query = decode_percent_encoding(query, NULL);
+        if (!ret->query) {
+            ret->error = 500;
+            return ret;
+        }
+    }
 
-    free(path);
     return ret;
+}
+
+static void destroy_uri(struct URI *uri) {
+	if (uri->path) free(uri->path);
+	if (uri->query) free(uri->query);
 }
 
 static const char *http_status_str(int status) {
@@ -221,8 +257,11 @@ static void create_error_page(struct http_response *res) {
     res->content_length = fprintf(res->content, error_format, res->status, http_status_str(res->status));
 }
 
-struct http_response create_response(struct http_request *req) {
-    struct http_response res = {
+struct http_response *create_response(struct http_request *req) {
+    struct http_response *res = malloc(sizeof(*res));
+    if (!res) return NULL;
+    memset(res, 0, sizeof(*res));
+    *res = (struct http_response) {
         .connection = CONN_CLOSE,
         .mime_type = "text/html", // mime type of error pages
         .header_sent = 0,
@@ -230,41 +269,48 @@ struct http_response create_response(struct http_request *req) {
     };
 
     if (req->error) {
-        res.major_version = 1;
-        res.minor_version = 1;
-        res.status = req->error;
+        res->major_version = 1;
+        res->minor_version = 1;
+        res->status = req->error;
     } else {
-        res.major_version = req->major_version;
-        res.minor_version = req->minor_version;
-        res.uri = parse_uri(req->path);
+        res->major_version = req->major_version;
+        res->minor_version = req->minor_version;
+        res->uri = parse_uri(req->path);
     }
 
     switch (req->request_type) {
         case HTTP_GET: {
-            res.connection = CONN_CLOSE;
-            if (!res.uri.error) {
-                res.status = 200;
-                res.content = fopen(res.uri.path + 1, "r");
-                if (res.content) {
-                    res.mime_type = lookup_mime_type(get_file_ext(res.uri.path));
-                	res.content_length = res.uri.filestat.st_size;
+            res->connection = CONN_CLOSE;
+            if (!res->uri->error) {
+                res->status = 200;
+                res->content = fopen(res->uri->path + 1, "r");
+                if (res->content) {
+                    res->mime_type = lookup_mime_type(get_file_ext(res->uri->path));
+                	res->content_length = res->uri->filestat.st_size;
                 } else {
-                	res.status = 500;
-                	create_error_page(&res);
+                	res->status = 500;
+                	create_error_page(res);
                 }
             } else {
-                res.status = res.uri.error;
-                create_error_page(&res);
+                res->status = res->uri->error;
+                create_error_page(res);
             }
         } break;
         default: {
-            res.status = 501;
-            create_error_page(&res);
+            res->status = 501;
+            create_error_page(res);
         }
     }
 
-    create_header(&res);
+    create_header(res);
     return res;
+}
+
+void destroy_response(struct http_response *res) {
+    if (!res) return;
+	destroy_uri(res->uri);
+	fclose(res->content);
+	free(res);
 }
 
 // 0 if incomplete, 1 if complete

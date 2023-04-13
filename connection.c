@@ -59,6 +59,10 @@ static void ConnectionList_Remove(ConnectionList *list, int index) {
 	shutdown(list->clients[index].fd, SHUT_RDWR);
 	close(list->clients[index].fd);
 	list->clients[index].fd = -1;
+	
+	if (list->connections[index].state == STATE_RES)
+	    destroy_response(list->connections[index].res);
+	
 	list->connections[index].state = STATE_END;
 	list->complete_connections[(list->complete_connections_start + list->num_complete_connections) & (list->connections_len - 1)] = index;
 	++list->num_complete_connections;
@@ -143,14 +147,13 @@ int ConnectionList_Poll(ConnectionList *list) {
 							parse_http_request(curr_conn->header.buf) :
 							(struct http_request) { .error = 400 };
 						curr_conn->res = create_response(&req);
+						if (!curr_conn->res) ConnectionList_Remove(list, i); // oof
 					}
 				} else if (list->clients[i].revents & POLLOUT && curr_conn->state == STATE_RES) {
-					if (send_response(list->clients[i].fd, &curr_conn->res)) {
-						fclose(curr_conn->res.content);
+					if (send_response(list->clients[i].fd, curr_conn->res)) {
 						ConnectionList_Remove(list, i);
 					}
 				} else { // some error happened
-					if (curr_conn->state == STATE_RES) fclose(curr_conn->res.content);
 					ConnectionList_Remove(list, i);
 				}
 				--nevents;
