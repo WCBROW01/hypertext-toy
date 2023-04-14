@@ -67,19 +67,14 @@ struct http_request {
 struct http_request parse_http_request(char *http_header);
 
 /**
- * @brief A parsed URI, with query separated from path and all percent encoded characters decoded.
- */
-struct URI {
-    char path[HTTP_PATH_MAX]; ///< Actual file to serve
-    char query[4096]; ///< Query to process in server (currently unused)
-    struct stat filestat; ///< File status (kept for multiple uses)
-    int error; ///< Error code for parsing URI (if applicable)
-};
-
-/**
  * @brief Type of HTTP connection.
  */
 enum connection_type { CONN_CLOSE, CONN_KEEPALIVE };
+
+/**
+ * @brief A parsed URI
+ */
+typedef struct URI URI;
 
 /**
  * @brief Structure for a HTTP response
@@ -89,7 +84,7 @@ struct http_response {
     int minor_version; ///< Minor HTTP version
     int status; ///< HTTP status
     enum connection_type connection; ///< Type of connection
-    struct URI uri; ///< URI of the file to serve
+    URI *uri; ///< URI of the file to serve
     const char *mime_type; ///< MIME type of the file
     size_t header_sent; ///< Number of bytes of the header sent
     struct http_header header; ///< Header data
@@ -104,7 +99,9 @@ struct http_response {
  * @param req the request to use
  * @return the response for your request
  */
-struct http_response create_response(struct http_request *req);
+struct http_response *create_response(struct http_request *req);
+
+void destroy_response(struct http_response *res);
 
 /**
  * @brief Send a HTTP response over a socket
