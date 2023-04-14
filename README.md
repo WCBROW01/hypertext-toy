@@ -1,10 +1,12 @@
-# http-server
+# hypertext-toy
 
-TODO: Come up with an actual name for this
+Thanks to [@therackshack](https://github.com/therackshack) for coming up with an actual name for this.
 
-This is a toy HTTP server written in C using sockets. It isn't fit for any type of production use-case, and I'm not even sure if I'd even use it as a teaching tool in the state it's currently in. However, it does exist, and it will serve webpages.
+This is a toy HTTP server written in C using sockets. It isn't fit for any type of production use-case, although it may be somewhat useful as a teaching tool. It is mostly here for me to use to learn about sockets, networking, and HTTP. However, it does exist, and it will serve webpages, so if you need to set up a quick and dirty static HTTP server, this may be useful.
 
 The server currently runs on port 8000 and listens to all addresses by default.
+
+SSL support is currently not planned, but it might be implemented if I either get bored or someone makes a pull request for it.
 
 ## Building
 
