@@ -3,7 +3,7 @@
  * @author Will Brown
  * @brief Data structures for HTTP server
  * @version 0.1
- * @date 2023-03-05
+ * @date 2023-04-16
  *
  * @copyright Copyright (c) 2023 Will Brown
  */
@@ -101,6 +101,11 @@ struct http_response {
  */
 struct http_response *create_response(struct http_request *req);
 
+/**
+ * @brief Free all memory associated with a http_response struct
+ *
+ * @param res the response to free
+ */
 void destroy_response(struct http_response *res);
 
 /**
