@@ -157,20 +157,31 @@ static struct URI parse_uri(char *path) {
     free(path); // done with that
     
     // bad path, or someone is trying to be sneaky...
-    if (!abs_path) ret.error = 404;
-    else if (strncmp(abs_path, global_config.root_path, global_config.root_path_len)) ret.error = 403;
+    if (!abs_path) {
+    	ret.error = 404;
+    	return ret;
+    } else if (strncmp(abs_path, global_config.root_path, global_config.root_path_len)) {
+    	ret.error = 403;
+    	return ret;
+    }
 
     // Path validity check
     if (stat(abs_path, &ret.filestat) == -1) {
         ret.error = 404;
+        return ret;
     // figure out if the path is a directory
     } else if (S_ISDIR(ret.filestat.st_mode)) {
         if (abs_path_len < 4085) {
             strcpy(abs_path + abs_path_len, "/index.html");
             abs_path_len += strlen("/index.html");
-            if (stat(abs_path, &ret.filestat) == -1)
+            if (stat(abs_path, &ret.filestat) == -1) {
                 ret.error = 404;
-        } else ret.error = 404;
+                return ret;
+            }
+        } else {
+        	ret.error = 404;
+        	return ret;
+        }
     }
 
     // copy correct path to new buffer
@@ -239,12 +250,13 @@ static const char *error_format =
 "\t<head>\n"
 "\t<body>\n"
 "\t\t<h1>%1$d %2$s</h1>\n"
+"\t\t<p>%3$s</p>\n"
 "\t</body>\n"
 "</html>";
 
-static void create_error_page(struct http_response *res) {
+static void create_error_page(struct http_response *res, const char *path) {
     res->content = fmemopen(NULL, 8192, "w+");
-    res->content_length = fprintf(res->content, error_format, res->status, http_status_str(res->status));
+    res->content_length = fprintf(res->content, error_format, res->status, http_status_str(res->status), path);
 }
 
 struct http_response *create_response(struct http_request *req) {
@@ -279,16 +291,16 @@ struct http_response *create_response(struct http_request *req) {
                 	res->content_length = res->uri.filestat.st_size;
                 } else {
                 	res->status = 500;
-                	create_error_page(res);
+                	create_error_page(res, req->path);
                 }
             } else {
                 res->status = res->uri.error;
-                create_error_page(res);
+                create_error_page(res, req->path);
             }
         } break;
         default: {
             res->status = 501;
-            create_error_page(res);
+            create_error_page(res, req->path);
         }
     }
 
