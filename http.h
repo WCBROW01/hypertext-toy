@@ -3,7 +3,7 @@
  * @author Will Brown
  * @brief Data structures for HTTP server
  * @version 0.1
- * @date 2023-04-16
+ * @date 2023-08-31
  *
  * @copyright Copyright (c) 2023 Will Brown
  */
@@ -72,9 +72,14 @@ struct http_request parse_http_request(char *http_header);
 enum connection_type { CONN_CLOSE, CONN_KEEPALIVE };
 
 /**
- * @brief A parsed URI
+ * @brief A parsed URI, with query separated from path and all percent encoded characters decoded.
  */
-typedef struct URI URI;
+struct URI {
+    char *path; ///< Actual file to serve
+    char *query; ///< Query to process in server (currently unused)
+    struct stat filestat; ///< File status (kept for multiple uses)
+    int error; ///< Error code for parsing URI (if applicable)
+};
 
 /**
  * @brief Structure for a HTTP response
@@ -84,7 +89,7 @@ struct http_response {
     int minor_version; ///< Minor HTTP version
     int status; ///< HTTP status
     enum connection_type connection; ///< Type of connection
-    URI *uri; ///< URI of the file to serve
+    struct URI uri; ///< URI of the file to serve
     const char *mime_type; ///< MIME type of the file
     size_t header_sent; ///< Number of bytes of the header sent
     struct http_header header; ///< Header data
@@ -107,16 +112,5 @@ struct http_response *create_response(struct http_request *req);
  * @param res the response to free
  */
 void destroy_response(struct http_response *res);
-
-/**
- * @brief Send a HTTP response over a socket
- * @details This will send chunks of the response until there is no more to send.
- * Keep calling this until you get a nonzero return value.
- *
- * @param fd file descriptor of the socket
- * @param res the response to send
- * @return 0 if incomplete, 1 if complete
- */
-int send_response(int fd, struct http_response *res);
 
 #endif // HTTP_H

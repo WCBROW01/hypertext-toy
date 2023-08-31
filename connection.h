@@ -1,9 +1,9 @@
 /**
  * @file connection.h
  * @author Will Brown
- * @brief Data structure for managing HTTP connections
+ * @brief Functions and data structures related to the http server and connections
  * @version 0.1
- * @date 2023-04-02
+ * @date 2023-08-31
  *
  * @copyright Copyright (c) 2023 Will Brown
  */
@@ -11,55 +11,53 @@
 #ifndef CONNECTION_H
 #define CONNECTION_H
 
-#include "http.h"
+typedef struct htt_connection htt_connection_t;
 
 /**
- * @brief enum denoting whether the connection is in the request or response stage
+ * @brief function pointer type for callbacks
  */
-enum connection_state { STATE_REQ, STATE_RES, STATE_END };
+typedef int (*htt_callback_t)(htt_connection_t *connection);
 
 /**
- * @brief A node in the list of connections.
+ * @brief function pointer type for freeing data
  */
-struct connection {
-	enum connection_state state;
-	union {
-		struct http_header header;
-		struct http_response *res;
-	};
+typedef void (*htt_free_t)(void *data);
+
+/**
+ * @brief The data for a connection
+ */
+struct htt_connection {
+    htt_callback_t callback;
+    htt_free_t free_func; // used if an error occurred
+    void *data;
+    int fd;
 };
 
 /**
- * @brief List of connections
- * @details Connections are stored as an array of pointers to a connection,
- * because the structure is big, and connections get added/removed very frequently.
- * This was previously a linked list, but I wanted a direct mapping between clients and connections.
- * The internal structure of the list is abstracted away so that it cannot be relied upon,
- * and is subject to change at any moment.
+ * @brief assign default callbacks and data for new connections
+ *
+ * @param conn connection to initialize
+ * @return 0 on success, -1 on failure
  */
-typedef struct ConnectionList ConnectionList;
+int htt_connection_init(htt_connection_t *conn);
 
 /**
- * @brief Create an instance of a ConnectionList
+ * @brief close a connection
  *
- * @param server_fd the file descriptor for the server
- * @return a pointer to the new ConnectionList
+ * @param conn connection to close
  */
-ConnectionList *ConnectionList_Create(int server_fd);
+void htt_connection_close(htt_connection_t *conn);
 
 /**
- * @brief Delete an instance of a ConnectionList
- *
- * @param list the list to delete
+ * @brief initialize web server
  */
-void ConnectionList_Delete(ConnectionList *list);
+void htt_server_init(int server_fd);
 
 /**
- * @brief Poll and handle requests on a connection list
+ * @brief poll connections
  *
- * @param list the list to poll
- * @param -1 on error, 0 on success
+ * @return 0, unless the server encountered an error.
  */
-int ConnectionList_Poll(ConnectionList *list);
+int htt_server_poll(void);
 
 #endif // CONNECTION_H

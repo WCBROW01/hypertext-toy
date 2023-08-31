@@ -30,8 +30,10 @@ static inline ssize_t search_string_enum_table(
  * -1 if the end of the header is never found after 8KB
  */
 int recv_http_header(int fd, struct http_header *header) {
-    while (header->len < sizeof(header->buf) && recv(fd, header->buf + header->len, 1, 0) > 0) {
-        if (++header->len >= 4 &&
+	ssize_t recv_res;
+    while (header->len < sizeof(header->buf) && (recv_res = recv(fd, header->buf + header->len, sizeof(header->buf - header->len), 0)) > 0) {
+    	header->len += recv_res;
+        if (header->len >= 4 &&
             // look for the end of the header
             header->buf[header->len - 4] == '\r' &&
             header->buf[header->len - 3] == '\n' &&
@@ -41,7 +43,7 @@ int recv_http_header(int fd, struct http_header *header) {
             return 1;
         }
     }
-
+    
     return header->len == sizeof(header->buf) ? -1 : 0;
 }
 
@@ -69,16 +71,6 @@ struct http_request parse_http_request(char *http_header) {
 
 	return res;
 }
-
-/**
- * @brief A parsed URI, with query separated from path and all percent encoded characters decoded.
- */
-struct URI {
-    char *path; ///< Actual file to serve
-    char *query; ///< Query to process in server (currently unused)
-    struct stat filestat; ///< File status (kept for multiple uses)
-    int error; ///< Error code for parsing URI (if applicable)
-};
 
 // decode hexadecimal characters from string
 // if an invalid character is found, -1 is returned.
@@ -144,11 +136,9 @@ static char *decode_percent_encoding(const char *uri, char *buf) {
 }
 
 // This mutates the string we give to it, but that's fine.
-static struct URI *parse_uri(char *path) {
+static struct URI parse_uri(char *path) {
 	// allocate and zero
-    struct URI *ret = malloc(sizeof(*ret));
-    if (!ret) return NULL;
-    memset(ret, 0, sizeof(*ret));
+    struct URI ret = {0};
     
     if (*path == '/') ++path;
     strtok(path, "?"); // tokenize query
@@ -157,49 +147,49 @@ static struct URI *parse_uri(char *path) {
     // replace passed in path with decoded path
     path = decode_percent_encoding(path, NULL);
     if (!path) {
-        ret->error = 500;
+        ret.error = 500;
         return ret;
     }
 
     char pathbuf[4096];
     char *abs_path = realpath(path, pathbuf);
-    size_t abs_path_len = strlen(abs_path);
+    size_t abs_path_len = abs_path ? strlen(abs_path) : 0;
     free(path); // done with that
     
     // bad path, or someone is trying to be sneaky...
-    if (!abs_path) ret->error = 404;
-    else if (strncmp(abs_path, global_config.root_path, global_config.root_path_len)) ret->error = 403;
+    if (!abs_path) ret.error = 404;
+    else if (strncmp(abs_path, global_config.root_path, global_config.root_path_len)) ret.error = 403;
 
     // Path validity check
-    if (stat(abs_path, &ret->filestat) == -1) {
-        ret->error = 404;
+    if (stat(abs_path, &ret.filestat) == -1) {
+        ret.error = 404;
     // figure out if the path is a directory
-    } else if (S_ISDIR(ret->filestat.st_mode)) {
+    } else if (S_ISDIR(ret.filestat.st_mode)) {
         if (abs_path_len < 4085) {
             strcpy(abs_path + abs_path_len, "/index.html");
             abs_path_len += strlen("/index.html");
-            if (stat(abs_path, &ret->filestat) == -1)
-                ret->error = 404;
-        } else ret->error = 404;
+            if (stat(abs_path, &ret.filestat) == -1)
+                ret.error = 404;
+        } else ret.error = 404;
     }
 
     // copy correct path to new buffer
     size_t path_len = abs_path_len - global_config.root_path_len;
-    ret->path = malloc(path_len + 1);
-    if (!ret->path) {
-        ret->error = 500;
+    ret.path = malloc(path_len + 1);
+    if (!ret.path) {
+        ret.error = 500;
         return ret;
     }
     
-    strncpy(ret->path, pathbuf + global_config.root_path_len, path_len);
-    ret->path[path_len] = '\0';
+    strncpy(ret.path, pathbuf + global_config.root_path_len, path_len);
+    ret.path[path_len] = '\0';
 
     // decode query
     char *query = strtok(NULL, "?");
     if (query) {
-        ret->query = decode_percent_encoding(query, NULL);
-        if (!ret->query) {
-            ret->error = 500;
+        ret.query = decode_percent_encoding(query, NULL);
+        if (!ret.query) {
+            ret.error = 500;
             return ret;
         }
     }
@@ -281,18 +271,18 @@ struct http_response *create_response(struct http_request *req) {
     switch (req->request_type) {
         case HTTP_GET: {
             res->connection = CONN_CLOSE;
-            if (!res->uri->error) {
+            if (!res->uri.error) {
                 res->status = 200;
-                res->content = fopen(res->uri->path + 1, "r");
+                res->content = fopen(res->uri.path + 1, "r");
                 if (res->content) {
-                    res->mime_type = lookup_mime_type(get_file_ext(res->uri->path));
-                	res->content_length = res->uri->filestat.st_size;
+                    res->mime_type = lookup_mime_type(get_file_ext(res->uri.path));
+                	res->content_length = res->uri.filestat.st_size;
                 } else {
                 	res->status = 500;
                 	create_error_page(res);
                 }
             } else {
-                res->status = res->uri->error;
+                res->status = res->uri.error;
                 create_error_page(res);
             }
         } break;
@@ -308,22 +298,7 @@ struct http_response *create_response(struct http_request *req) {
 
 void destroy_response(struct http_response *res) {
     if (!res) return;
-	destroy_uri(res->uri);
+	destroy_uri(&res->uri);
 	fclose(res->content);
 	free(res);
-}
-
-// 0 if incomplete, 1 if complete
-int send_response(int fd, struct http_response *res) {
-    if (res->header_sent < res->header.len) {
-        res->header_sent += send(fd, res->header.buf + res->header_sent, res->header.len - res->header_sent, 0);
-        return 0;
-    } else if (res->content_sent < res->content_length) {
-        fseek(res->content, res->content_sent, SEEK_SET);
-        char sendbuf[4096];
-        size_t buflen = fread(sendbuf, 1, sizeof(sendbuf), res->content);
-        res->content_sent += send(fd, sendbuf, buflen, 0);
-    }
-
-    return res->content_sent == res->content_length;
 }
