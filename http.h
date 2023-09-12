@@ -82,7 +82,7 @@ enum URI_status {
  * @brief A parsed URI, with query separated from path and all percent encoded characters decoded.
  */
 struct URI {
-    char *path; ///< Actual file to serve
+    char *path; ///< Actual file to serve, or location in case of a redir.
     char *query; ///< Query to process in server (currently unused)
     struct stat filestat; ///< File status (kept for multiple uses)
     int status; ///< Status code for parsing URI. Can be either a URI_status enum or HTTP status code.

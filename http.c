@@ -147,16 +147,16 @@ static struct URI parse_uri(char *path) {
     if (*path == '\0') path = "index.html"; // path is root
 
     // replace passed in path with decoded path
-    path = decode_percent_encoding(path, NULL);
-    if (!path) {
+    char *decoded_path = decode_percent_encoding(path, NULL);
+    if (!decoded_path) {
         ret.status = 500;
         return ret;
     }
 
     char pathbuf[4096];
-    char *abs_path = realpath(path, pathbuf);
+    char *abs_path = realpath(decoded_path, pathbuf);
     size_t abs_path_len = abs_path ? strlen(abs_path) : 0;
-    free(path); // done with that
+    free(decoded_path); // done with that
     
     // bad path, or someone is trying to be sneaky...
     if (!abs_path) {
@@ -173,7 +173,18 @@ static struct URI parse_uri(char *path) {
         return ret;
     // figure out if the path is a directory
     } else if (S_ISDIR(ret.filestat.st_mode)) {
-        if (abs_path_len < 4085) {
+    	// do a courtesy redir if there is no / at the end
+    	size_t path_len;
+    	if (global_config.flags & CONFIG_COURTESY_REDIR && path[(path_len = strlen(path)) - 1] != '/') {
+			// allocate a new string, append '/', and return
+			ret.path = malloc(path_len + 3);
+			ret.path[0] = '/';
+			memcpy(ret.path + 1, path, path_len);
+			ret.path[path_len + 1] = '/';
+			ret.path[path_len + 2] = '\0';
+			ret.status = 301;
+			return ret;
+    	} else if (abs_path_len < 4085) {
             strcpy(abs_path + abs_path_len, "/index.html");
             
             if (stat(abs_path, &ret.filestat) == -1) {
@@ -224,6 +235,7 @@ static void destroy_uri(struct URI *uri) {
 static const char *http_status_str(int status) {
     switch (status) {
         case 200: return "OK";
+        case 301: return "Moved Permanently";
         case 400: return "Bad Request";
         case 403: return "Forbidden";
         case 404: return "Not Found";
@@ -242,12 +254,20 @@ static void create_header(struct http_response *res) {
         "HTTP/%d.%d %d %s\r\n"
         "Content-Type: %s\r\n"
         "Content-Length: %ld\r\n"
-        "Connection: %s\r\n\r\n",
+        "Connection: %s\r\n",
         res->major_version, res->minor_version, res->status, http_status_str(res->status),
         res->mime_type ? res->mime_type : "", // if there is none, just don't send a mime type
         res->content_length,
         CONN_TYPE_TABLE[res->connection]
     );
+    
+    if (res->status >= 300 && res->status < 400)
+    	res->header.len += snprintf(
+    		res->header.buf + res->header.len, sizeof(res->header.buf) - res->header.len,
+    		"Location: %s\r\n", res->uri.path
+    	);
+    
+    res->header.len = stpncpy(res->header.buf + res->header.len, "\r\n", sizeof(res->header.buf) - res->header.len) - res->header.buf;
 }
 
 static void create_error_page(struct http_response *res, const char *path) {
@@ -337,13 +357,18 @@ struct http_response *create_response(struct http_request *req) {
 		            }
             	} break;
             	case URI_FOUND_DIR: {
-            		res->status = 200;
-            		res->content = open_memstream(&res->content_buf, &res->content_length);
-            		if (res->content) {
-            			create_dir_listing(res);
+            		if (global_config.flags & CONFIG_DIR_LISTING) {    		
+		        		res->status = 200;
+		        		res->content = open_memstream(&res->content_buf, &res->content_length);
+		        		if (res->content) {
+		        			create_dir_listing(res);
+		        		} else {
+		        			res->status = 500;
+				        	create_error_page(res, req->path);
+		        		}
             		} else {
-            			res->status = 500;
-		            	create_error_page(res, req->path);
+            			res->status = 404;
+            			create_error_page(res, req->path);
             		}
             	} break;
             	default: {

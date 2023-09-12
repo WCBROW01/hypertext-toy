@@ -17,12 +17,17 @@
 
 #include "constants.h"
 
+enum server_config_flags {
+	CONFIG_DIR_LISTING = 1, CONFIG_COURTESY_REDIR = 2
+};
+
 /**
  * @brief struct containing the configuration of the server
  */
 struct server_config {
     char root_path[HTTP_PATH_MAX];
     size_t root_path_len;
+    int flags; // flag-based options
     in_port_t server_port;
 };
 
