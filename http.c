@@ -328,7 +328,8 @@ struct http_response *create_response(struct http_request *req) {
             		res->status = 200;
             		res->content = fopen(res->uri.path + 1, "r");
             		if (res->content) {
-		                res->mime_type = lookup_mime_type(get_file_ext(res->uri.path));
+            			const char *ext = get_file_ext(res->uri.path);
+		                res->mime_type = ext ? lookup_mime_type(ext) : NULL;
 		            	res->content_length = res->uri.filestat.st_size;
 		            } else {
 		            	res->status = 500;
