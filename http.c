@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <string.h>
+#include <errno.h>
 #include <dirent.h>
 
 #include <sys/types.h>
@@ -281,15 +282,18 @@ static void create_dir_listing(struct http_response *res) {
 		res->uri.path
 	);
 	
-	DIR *dir = opendir(res->uri.path + 1);
-
-	struct dirent *dp;
-	while ((dp = readdir(dir))) {
-		fprintf(res->content, "<a href=\"%1$s\">%1$s</a><br>", dp->d_name);
+	struct dirent **namelist;
+	int n = scandir(res->uri.path + 1, &namelist, NULL, alphasort);
+	if (n > 0) {
+		for (int i = 0; i < n; ++i) {
+			fprintf(res->content, "<a href=\"%1$s/%2$s\">%2$s</a><br>", res->uri.path, namelist[i]->d_name);
+			free(namelist[i]);
+		}
+		free(namelist);
+	} else {
+		fprintf(res->content, "<p>Error creating directory listing: %s</p>", strerror(errno));
 	}
-
-	closedir(dir);
-
+	
 	fprintf(res->content, "</body></html>");
 	fflush(res->content);
 }
