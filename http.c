@@ -247,7 +247,7 @@ static const char *error_format =
 "<html>\n"
 "\t<head>\n"
 "\t\t<title>%1$d %2$s</title>\n"
-"\t<head>\n"
+"\t</head>\n"
 "\t<body>\n"
 "\t\t<h1>%1$d %2$s</h1>\n"
 "\t\t<p>%3$s</p>\n"
