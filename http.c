@@ -255,8 +255,9 @@ static const char *error_format =
 "</html>";
 
 static void create_error_page(struct http_response *res, const char *path) {
-    res->content = fmemopen(NULL, 8192, "w+");
-    res->content_length = fprintf(res->content, error_format, res->status, http_status_str(res->status), path);
+    res->content = open_memstream(&res->content_buf, &res->content_length);
+    fprintf(res->content, error_format, res->status, http_status_str(res->status), path);
+    fflush(res->content);
 }
 
 struct http_response *create_response(struct http_request *req) {
@@ -267,7 +268,9 @@ struct http_response *create_response(struct http_request *req) {
         .connection = CONN_CLOSE,
         .mime_type = "text/html", // mime type of error pages
         .header_sent = 0,
-        .content_sent = 0
+        .content_length = 0,
+        .content_sent = 0,
+        .content_buf = NULL
     };
 
     if (req->error) {
@@ -312,5 +315,6 @@ void destroy_response(struct http_response *res) {
     if (!res) return;
 	destroy_uri(&res->uri);
 	fclose(res->content);
+	if (res->content_buf) free(res->content_buf);
 	free(res);
 }

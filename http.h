@@ -95,6 +95,7 @@ struct http_response {
     struct http_header header; ///< Header data
     size_t content_length; ///< Length of the content section of the response
     size_t content_sent; ///< Number of bytes of content sent
+    char *content_buf; ///< Buffer for memory streams
     FILE *content; ///< stdio FILE pointer to the content
 };
 
