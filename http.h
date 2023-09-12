@@ -72,13 +72,20 @@ struct http_request parse_http_request(char *http_header);
 enum connection_type { CONN_CLOSE, CONN_KEEPALIVE };
 
 /**
+ * @brief Status enum for URI parsing. Anything >= 100 is a HTTP status code.
+ */
+enum URI_status {
+	URI_FOUND_FILE, URI_FOUND_DIR
+};
+
+/**
  * @brief A parsed URI, with query separated from path and all percent encoded characters decoded.
  */
 struct URI {
     char *path; ///< Actual file to serve
     char *query; ///< Query to process in server (currently unused)
     struct stat filestat; ///< File status (kept for multiple uses)
-    int error; ///< Error code for parsing URI (if applicable)
+    int status; ///< Status code for parsing URI. Can be either a URI_status enum or HTTP status code.
 };
 
 /**

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <string.h>
+#include <dirent.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -147,7 +148,7 @@ static struct URI parse_uri(char *path) {
     // replace passed in path with decoded path
     path = decode_percent_encoding(path, NULL);
     if (!path) {
-        ret.error = 500;
+        ret.status = 500;
         return ret;
     }
 
@@ -158,37 +159,43 @@ static struct URI parse_uri(char *path) {
     
     // bad path, or someone is trying to be sneaky...
     if (!abs_path) {
-    	ret.error = 404;
+    	ret.status = 404;
     	return ret;
     } else if (strncmp(abs_path, global_config.root_path, global_config.root_path_len)) {
-    	ret.error = 403;
+    	ret.status = 403;
     	return ret;
     }
 
     // Path validity check
     if (stat(abs_path, &ret.filestat) == -1) {
-        ret.error = 404;
+        ret.status = 404;
         return ret;
     // figure out if the path is a directory
     } else if (S_ISDIR(ret.filestat.st_mode)) {
         if (abs_path_len < 4085) {
             strcpy(abs_path + abs_path_len, "/index.html");
-            abs_path_len += strlen("/index.html");
+            
             if (stat(abs_path, &ret.filestat) == -1) {
-                ret.error = 404;
-                return ret;
+                // remove /index.html so a directory listing can be done instead
+                abs_path[abs_path_len] = '\0';
+                ret.status = URI_FOUND_DIR;
+            } else {
+            	abs_path_len += strlen("/index.html");
+            	ret.status = URI_FOUND_FILE;
             }
         } else {
-        	ret.error = 404;
+        	ret.status = 404;
         	return ret;
         }
+    } else {
+    	ret.status = URI_FOUND_FILE;
     }
 
     // copy correct path to new buffer
     size_t path_len = abs_path_len - global_config.root_path_len;
     ret.path = malloc(path_len + 1);
     if (!ret.path) {
-        ret.error = 500;
+        ret.status = 500;
         return ret;
     }
     
@@ -200,7 +207,7 @@ static struct URI parse_uri(char *path) {
     if (query) {
         ret.query = decode_percent_encoding(query, NULL);
         if (!ret.query) {
-            ret.error = 500;
+            ret.status = 500;
             return ret;
         }
     }
@@ -242,28 +249,54 @@ static void create_header(struct http_response *res) {
     );
 }
 
-static const char *error_format =
-"<!DOCTYPE html>\n"
-"<html>\n"
-"\t<head>\n"
-"\t\t<title>%1$d %2$s</title>\n"
-"\t</head>\n"
-"\t<body>\n"
-"\t\t<h1>%1$d %2$s</h1>\n"
-"\t\t<p>%3$s</p>\n"
-"\t</body>\n"
-"</html>";
-
 static void create_error_page(struct http_response *res, const char *path) {
     res->content = open_memstream(&res->content_buf, &res->content_length);
-    fprintf(res->content, error_format, res->status, http_status_str(res->status), path);
+    fprintf(
+    	res->content,
+		"<!DOCTYPE html>"
+		"<html>"
+			"<head>"
+				"<title>%1$d %2$s</title>" // res->status, http_status_str(res->status
+			"</head>"
+			"<body>"
+				"<h1>%1$d %2$s</h1>" // res->status, http_status_str(res->status
+				"<p>%3$s</p>" // path
+			"</body>"
+		"</html>",
+		res->status, http_status_str(res->status), path
+	);
     fflush(res->content);
 }
 
+static void create_dir_listing(struct http_response *res) {
+	fprintf(
+		res->content,
+		"<!DOCTYPE html>"
+		"<html>"
+			"<head>"
+				"<title>Index of %1$s</title>"
+			"</head>"
+			"<body>"
+				"<h1>Index of %1$s</h1>",
+		res->uri.path
+	);
+	
+	DIR *dir = opendir(res->uri.path + 1);
+
+	struct dirent *dp;
+	while ((dp = readdir(dir))) {
+		fprintf(res->content, "<a href=\"%1$s\">%1$s</a><br>", dp->d_name);
+	}
+
+	closedir(dir);
+
+	fprintf(res->content, "</body></html>");
+	fflush(res->content);
+}
+
 struct http_response *create_response(struct http_request *req) {
-    struct http_response *res = malloc(sizeof(*res));
+    struct http_response *res = calloc(1, sizeof(*res));
     if (!res) return NULL;
-    memset(res, 0, sizeof(*res));
     *res = (struct http_response) {
         .connection = CONN_CLOSE,
         .mime_type = "text/html", // mime type of error pages
@@ -286,19 +319,32 @@ struct http_response *create_response(struct http_request *req) {
     switch (req->request_type) {
         case HTTP_GET: {
             res->connection = CONN_CLOSE;
-            if (!res->uri.error) {
-                res->status = 200;
-                res->content = fopen(res->uri.path + 1, "r");
-                if (res->content) {
-                    res->mime_type = lookup_mime_type(get_file_ext(res->uri.path));
-                	res->content_length = res->uri.filestat.st_size;
-                } else {
-                	res->status = 500;
-                	create_error_page(res, req->path);
-                }
-            } else {
-                res->status = res->uri.error;
-                create_error_page(res, req->path);
+            switch (res->uri.status) {
+            	case URI_FOUND_FILE: {
+            		res->status = 200;
+            		res->content = fopen(res->uri.path + 1, "r");
+            		if (res->content) {
+		                res->mime_type = lookup_mime_type(get_file_ext(res->uri.path));
+		            	res->content_length = res->uri.filestat.st_size;
+		            } else {
+		            	res->status = 500;
+		            	create_error_page(res, req->path);
+		            }
+            	} break;
+            	case URI_FOUND_DIR: {
+            		res->status = 200;
+            		res->content = open_memstream(&res->content_buf, &res->content_length);
+            		if (res->content) {
+            			create_dir_listing(res);
+            		} else {
+            			res->status = 500;
+		            	create_error_page(res, req->path);
+            		}
+            	} break;
+            	default: {
+            		res->status = res->uri.status;
+	                create_error_page(res, req->path);
+            	}
             }
         } break;
         default: {
