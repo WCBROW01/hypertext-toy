@@ -5,6 +5,9 @@
 #include <errno.h>
 #include <dirent.h>
 
+#define __USE_XOPEN
+#include <time.h>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -246,6 +249,21 @@ static const char *http_status_str(int status) {
     }
 }
 
+#define HTTP_DATE_FMT "%a, %d %b %Y %T GMT"
+
+// TODO: figure out what default locale behavior is
+static char *to_http_date(const time_t t) {
+	static char s[30]; // using a static string. sue me.
+	strftime(s, sizeof(s), HTTP_DATE_FMT, gmtime(&t));
+	return s;
+}
+
+static time_t from_http_date(const char s[30]) {
+	struct tm tm;
+	strptime(s, HTTP_DATE_FMT, &tm);
+	return timegm(&tm);
+}
+
 static void create_header(struct http_response *res) {
     const char *CONN_TYPE_TABLE[] = {"close", "keep-alive"};
 
@@ -253,15 +271,30 @@ static void create_header(struct http_response *res) {
         res->header.buf, sizeof(res->header.buf),
         "HTTP/%d.%d %d %s\r\n"
         "Content-Type: %s\r\n"
-        "Content-Length: %ld\r\n"
-        "Connection: %s\r\n",
+        "Connection: %s\r\n"
+        "Date: %s\r\n",
         res->major_version, res->minor_version, res->status, http_status_str(res->status),
         res->mime_type ? res->mime_type : "", // if there is none, just don't send a mime type
-        res->content_length,
-        CONN_TYPE_TABLE[res->connection]
+        CONN_TYPE_TABLE[res->connection], to_http_date(time(NULL))
     );
     
-    if (res->status >= 300 && res->status < 400)
+    // only send content length if the response has a body
+    if (res->content) {
+    	res->header.len += snprintf(
+    		res->header.buf + res->header.len, sizeof(res->header.buf) - res->header.len,
+    		"Content-Length: %ld\r\n", res->content_length
+    	);
+    }
+    
+    // only send last modified if not an error page
+    if (res->status < 400) {
+    	res->header.len += snprintf(
+    		res->header.buf + res->header.len, sizeof(res->header.buf) - res->header.len,
+    		"Last-Modified: %s\r\n", to_http_date(res->uri.filestat.st_mtime)
+    	);
+    }
+    
+    if (res->status >= 300 && res->status != 304 && res->status < 400)
     	res->header.len += snprintf(
     		res->header.buf + res->header.len, sizeof(res->header.buf) - res->header.len,
     		"Location: %s\r\n", res->uri.path
