@@ -12,6 +12,7 @@
 #define CONFIG_H
 
 #include <stddef.h>
+#include <time.h>
 
 #include <netinet/in.h>
 
@@ -27,7 +28,8 @@ enum server_config_flags {
 struct server_config {
     char root_path[HTTP_PATH_MAX];
     size_t root_path_len;
-    int flags; // flag-based options
+    char *mime_type_path;
+    int flags; ///< flag-based options
     in_port_t server_port;
 };
 

@@ -11,6 +11,8 @@
 #ifndef MIME_TYPES_H
 #define MIME_TYPES_H
 
+void load_mime_type_list(void);
+
 /**
  * @brief Get the extension of a file (if there is one)
  * 

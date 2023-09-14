@@ -12,10 +12,12 @@
 
 #include "config.h"
 #include "connection.h"
+#include "mime-types.h"
 
 // this will accept arguments some day...
 int main(void) {
 	load_default_config();
+	load_mime_type_list();
 
 	int server_fd = socket(PF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
 	if (server_fd == -1) {
