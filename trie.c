@@ -10,12 +10,12 @@ struct htt_trie *htt_trie_create(void) {
 
 void htt_trie_destroy(struct htt_trie *t) {
 	if (!t) return;
-	for (int i = 0; i < 63; ++i) htt_trie_destroy(t->children[i]);
+	for (int i = 0; i < 64; ++i) htt_trie_destroy(t->children[i]);
 	free(t->value);
 	free(t);
 }
 
-// make 
+// generate a valid index from an ASCII character. lowercase characters will share an index with uppercase characters.
 static inline int ctoindex(int c) {
 	if (c < 32 || c > 127) return -1;
 	c -= 32;
