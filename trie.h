@@ -1,8 +1,9 @@
 #ifndef HTT_TRIE_H
 #define HTT_TRIE_H
 
+// trie supports ASCII alphanumeric + special characters, case insensitive
 struct htt_trie {
-	struct htt_trie *children[255];
+	struct htt_trie *children[64];
 	char *value;
 };
 
