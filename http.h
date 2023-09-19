@@ -17,13 +17,15 @@
 #include <sys/stat.h>
 
 #include "constants.h"
+#include "cvector.h"
 
 /**
  * @brief Structure for a HTTP header
  */
-struct http_header {
-    char buf[8192]; ///< Buffer for the header (max 8192 bytes)
-    size_t len; ///< Actual length of the header
+struct sized_buffer {
+	size_t cap; ///< Capacity of the buffer
+    size_t len; ///< Actual length of the buffer
+    char buf[]; ///< Buffer max 8192 bytes
 };
 
 /**
@@ -37,7 +39,7 @@ struct http_header {
  * 0 if recovery is incomplete,
  * -1 if the end of the header is never found after 8KB
  */
-int recv_http_header(int fd, struct http_header *header);
+int recv_http_header(int fd, struct sized_buffer *header);
 
 /**
  * @brief enumeration of the types of HTTP requests
@@ -98,8 +100,9 @@ struct http_response {
     enum connection_type connection; ///< Type of connection
     struct URI uri; ///< URI of the file to serve
     const char *mime_type; ///< MIME type of the file
+    size_t header_length; ///< Length of the header section of the response
     size_t header_sent; ///< Number of bytes of the header sent
-    struct http_header header; ///< Header data
+    char *header_buf; ///< Header data
     size_t content_length; ///< Length of the content section of the response
     size_t content_sent; ///< Number of bytes of content sent
     char *content_buf; ///< Buffer for memory streams

@@ -21,7 +21,8 @@ static int server_fd;
 int htt_connection_init(htt_connection_t *conn) {
 	conn->callback = &http_request_callback;
 	conn->free_func = &free;
-	conn->data = calloc(1, sizeof(struct http_header));
+	conn->data = calloc(1, sizeof(struct sized_buffer) + 8192);
+	if (conn->data) ((struct sized_buffer *) conn->data)->cap = 8192;
 	return !conn->data - 1;
 }
 

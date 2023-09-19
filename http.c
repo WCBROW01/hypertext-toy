@@ -34,9 +34,9 @@ static inline ssize_t search_string_enum_table(
  * 0 if recovery is incomplete
  * -1 if the end of the header is never found after 8KB
  */
-int recv_http_header(int fd, struct http_header *header) {
+int recv_http_header(int fd, struct sized_buffer *header) {
 	ssize_t recv_res;
-    while (header->len < sizeof(header->buf) && (recv_res = recv(fd, header->buf + header->len, sizeof(header->buf - header->len), 0)) > 0) {
+    while (header->len < header->cap && (recv_res = recv(fd, header->buf + header->len, header->cap - header->len, 0)) > 0) {
     	header->len += recv_res;
         if (header->len >= 4 &&
             // look for the end of the header
@@ -49,7 +49,7 @@ int recv_http_header(int fd, struct http_header *header) {
         }
     }
     
-    return header->len == sizeof(header->buf) ? -1 : 0;
+    return header->len == header->cap ? -1 : 0;
 }
 
 struct http_request parse_http_request(char *http_header) {
@@ -266,9 +266,15 @@ static time_t from_http_date(const char s[30]) {
 
 static void create_header(struct http_response *res) {
     const char *CONN_TYPE_TABLE[] = {"close", "keep-alive"};
+    
+    FILE *fp = open_memstream(&res->header_buf, &res->header_length);
+    if (!fp) {
+    	res->status = 501;
+    	return;
+    }
 
-    res->header.len = snprintf(
-        res->header.buf, sizeof(res->header.buf),
+    fprintf(
+        fp,
         "HTTP/%d.%d %d %s\r\n"
         "Content-Type: %s\r\n"
         "Connection: %s\r\n"
@@ -279,28 +285,21 @@ static void create_header(struct http_response *res) {
     );
     
     // only send content length if the response has a body
-    if (res->content) {
-    	res->header.len += snprintf(
-    		res->header.buf + res->header.len, sizeof(res->header.buf) - res->header.len,
-    		"Content-Length: %ld\r\n", res->content_length
-    	);
-    }
+    if (res->content)
+    	fprintf(fp, "Content-Length: %ld\r\n", res->content_length);
     
     // only send last modified if not an error page
-    if (res->status < 400) {
-    	res->header.len += snprintf(
-    		res->header.buf + res->header.len, sizeof(res->header.buf) - res->header.len,
-    		"Last-Modified: %s\r\n", to_http_date(res->uri.filestat.st_mtime)
-    	);
-    }
+    if (res->status < 400)
+    	fprintf(fp, "Last-Modified: %s\r\n", to_http_date(res->uri.filestat.st_mtime));
     
     if (res->status >= 300 && res->status != 304 && res->status < 400)
-    	res->header.len += snprintf(
-    		res->header.buf + res->header.len, sizeof(res->header.buf) - res->header.len,
-    		"Location: %s\r\n", res->uri.path
-    	);
+    	fprintf(fp, "Location: %s\r\n", res->uri.path);
     
-    res->header.len = stpncpy(res->header.buf + res->header.len, "\r\n", sizeof(res->header.buf) - res->header.len) - res->header.buf;
+    if (res->status <= 500)
+    	fprintf(fp, "Cache-Control: max-age=%d\r\n", global_config.max_age);
+    
+    fputs("\r\n", fp);
+    fclose(fp);
 }
 
 static void create_error_page(struct http_response *res, const char *path) {
@@ -357,7 +356,9 @@ struct http_response *create_response(struct http_request *req) {
     *res = (struct http_response) {
         .connection = CONN_CLOSE,
         .mime_type = "text/html", // mime type of error pages
+        .header_length = 0,
         .header_sent = 0,
+        .header_buf = NULL,
         .content_length = 0,
         .content_sent = 0,
         .content_buf = NULL

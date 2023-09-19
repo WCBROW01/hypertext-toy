@@ -29,6 +29,7 @@ struct server_config {
     char root_path[HTTP_PATH_MAX];
     size_t root_path_len;
     char *mime_type_path;
+    int max_age; ///< Max age of cached data
     int flags; ///< flag-based options
     in_port_t server_port;
 };

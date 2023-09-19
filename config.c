@@ -18,6 +18,7 @@ int load_default_config(void) {
     }
 
     global_config.root_path_len = strlen(global_config.root_path);
+    global_config.max_age = 60; // temporary value
     global_config.mime_type_path = "mime-types.txt";
     global_config.flags = CONFIG_DIR_LISTING | CONFIG_COURTESY_REDIR;
     global_config.server_port = htons(8000);

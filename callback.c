@@ -10,7 +10,7 @@
 #include "http.h"
 
 int http_request_callback(htt_connection_t *conn) {
-	struct http_header *header = conn->data;
+	struct sized_buffer *header = conn->data;
 	int recv_res = recv_http_header(conn->fd, header);
 	if (recv_res) {
 		struct http_request req = recv_res == 1 ?
@@ -34,11 +34,11 @@ int http_response_header_callback(htt_connection_t *conn) {
 	struct http_response *res = conn->data;
 
 	ssize_t send_result;
-    while ((send_result = send(conn->fd, res->header.buf + res->header_sent, res->header.len - res->header_sent, 0)) > 0) {
+    while ((send_result = send(conn->fd, res->header_buf + res->header_sent, res->header_length - res->header_sent, 0)) > 0) {
         res->header_sent += send_result;
     }
 
-	if (res->header_sent == res->header.len) {
+	if (res->header_sent == res->header_length) {
 		conn->callback = &http_response_content_callback;
 	}
 	
