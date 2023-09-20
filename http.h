@@ -17,7 +17,6 @@
 #include <sys/stat.h>
 
 #include "constants.h"
-#include "cvector.h"
 
 /**
  * @brief Structure for a HTTP header
