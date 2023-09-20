@@ -3,7 +3,7 @@
 
 // trie supports ASCII alphanumeric + special characters, case insensitive
 struct htt_trie {
-	struct htt_trie *children[64];
+	struct htt_trie *children[8];
 	char *value;
 };
 

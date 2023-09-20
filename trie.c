@@ -10,7 +10,7 @@ struct htt_trie *htt_trie_create(void) {
 
 void htt_trie_destroy(struct htt_trie *t) {
 	if (!t) return;
-	for (int i = 0; i < 64; ++i) htt_trie_destroy(t->children[i]);
+	for (int i = 0; i < 8; ++i) htt_trie_destroy(t->children[i]);
 	free(t->value);
 	free(t);
 }
@@ -26,11 +26,15 @@ static inline int ctoindex(int c) {
 char *htt_trie_insert(struct htt_trie *t, const char *key, char *value) {
 	int i;
 	while ((i = ctoindex(*key)) != -1) {
-		// this looks so stupid but I cannot think of a better way to do this.
-		struct htt_trie **child = &t->children[i];
-		t = *child = *child ? *child : htt_trie_create();
-		if (!t) return NULL;
-		++key;
+		// index is split into two 3-bit integers
+		for (int j = 2; j > 0; --j) {
+			// this looks so stupid but I cannot think of a better way to do this.
+			struct htt_trie **child = &t->children[i & 7];
+			t = *child = *child ? *child : htt_trie_create();
+			if (!t) return NULL;
+			++key;
+			i >>= 3;
+		}
 	}
 	
 	t->value = value;
@@ -40,9 +44,12 @@ char *htt_trie_insert(struct htt_trie *t, const char *key, char *value) {
 char *htt_trie_search(struct htt_trie *t, const char *key) {
 	int i;
 	while ((i = ctoindex(*key)) != -1) {
-		t = t->children[i];
-		if (!t) return NULL;
-		++key;
+		for (int j = 2; j > 0; --j) {
+			t = t->children[i & 7];
+			if (!t) return NULL;
+			++key;
+			i >>= 3;
+		}
 	}
 	
 	return t->value;
