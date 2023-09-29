@@ -56,6 +56,7 @@ struct http_request {
     enum http_request_type request_type; ///< Type of request
     int major_version; ///< Major HTTP version
     int minor_version; ///< Minor HTTP version
+    time_t if_modified_since; ///< If-Modified-Since header
     int error; ///< Error code for the HTTP request (if applicable)
 };
 

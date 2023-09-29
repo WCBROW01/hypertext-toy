@@ -28,6 +28,21 @@ static inline ssize_t search_string_enum_table(
     return -1;
 }
 
+#define HTTP_DATE_FMT "%a, %d %b %Y %T GMT"
+
+// TODO: figure out what default locale behavior is
+static char *to_http_date(const time_t t) {
+	static char s[30]; // using a static string. sue me.
+	strftime(s, sizeof(s), HTTP_DATE_FMT, gmtime(&t));
+	return s;
+}
+
+static time_t from_http_date(const char s[30]) {
+	struct tm tm;
+	strptime(s, HTTP_DATE_FMT, &tm);
+	return timegm(&tm);
+}
+
 /*
  * Returns:
  * 1 if recovery is complete
@@ -45,11 +60,20 @@ int recv_http_header(int fd, struct sized_buffer *header) {
             header->buf[header->len - 2] == '\r' &&
             header->buf[header->len - 1] == '\n')
         {
+        	header->buf[header->len - 2] = '\0';
             return 1;
         }
     }
     
     return header->len == header->cap ? -1 : 0;
+}
+
+static void parse_http_request_entry(struct http_request *req, const char *entry) {
+	char http_date_str[30];
+	if (sscanf(entry, "If-Modified-Since: %29s", http_date_str) == 1) {
+		req->if_modified_since = from_http_date(http_date_str);
+		return;
+	}
 }
 
 struct http_request parse_http_request(char *http_header) {
@@ -73,6 +97,16 @@ struct http_request parse_http_request(char *http_header) {
     };
 
     res.request_type = search_string_enum_table(request_type, REQUEST_TYPE_TABLE, sizeof(REQUEST_TYPE_TABLE) / sizeof(REQUEST_TYPE_TABLE[0]));
+    
+    // start parsing header entries
+    // skip first line
+    strtok(http_header, "\r\n");
+    {
+    	char *entry;
+    	while ((entry = strtok(NULL, "\r\n"))) {
+    		parse_http_request_entry(&res, entry);
+    	}
+    }
 
 	return res;
 }
@@ -239,6 +273,7 @@ static const char *http_status_str(int status) {
     switch (status) {
         case 200: return "OK";
         case 301: return "Moved Permanently";
+        case 304: return "Not Modified";
         case 400: return "Bad Request";
         case 403: return "Forbidden";
         case 404: return "Not Found";
@@ -249,20 +284,7 @@ static const char *http_status_str(int status) {
     }
 }
 
-#define HTTP_DATE_FMT "%a, %d %b %Y %T GMT"
 
-// TODO: figure out what default locale behavior is
-static char *to_http_date(const time_t t) {
-	static char s[30]; // using a static string. sue me.
-	strftime(s, sizeof(s), HTTP_DATE_FMT, gmtime(&t));
-	return s;
-}
-
-static time_t from_http_date(const char s[30]) {
-	struct tm tm;
-	strptime(s, HTTP_DATE_FMT, &tm);
-	return timegm(&tm);
-}
 
 static void create_header(struct http_response *res) {
     const char *CONN_TYPE_TABLE[] = {"close", "keep-alive"};
@@ -379,27 +401,35 @@ struct http_response *create_response(struct http_request *req) {
             res->connection = CONN_CLOSE;
             switch (res->uri.status) {
             	case URI_FOUND_FILE: {
-            		res->status = 200;
-            		res->content = fopen(res->uri.path + 1, "r");
-            		if (res->content) {
-            			const char *ext = get_file_ext(res->uri.path);
-		                res->mime_type = ext ? lookup_mime_type(ext) : NULL;
-		            	res->content_length = res->uri.filestat.st_size;
-		            } else {
-		            	res->status = 500;
-		            	create_error_page(res, req->path);
-		            }
+        			const char *ext = get_file_ext(res->uri.path);
+	                res->mime_type = ext ? lookup_mime_type(ext) : NULL;
+	                if (res->uri.filestat.st_atime < req->if_modified_since) {
+	                	res->status = 304;
+	                } else {
+		        		res->status = 200;
+		        		res->content = fopen(res->uri.path + 1, "r");
+		        		if (res->content) {
+				        	res->content_length = res->uri.filestat.st_size;
+				        } else {
+				        	res->status = 500;
+				        	create_error_page(res, req->path);
+				        }	                
+	                }
             	} break;
             	case URI_FOUND_DIR: {
-            		if (global_config.flags & CONFIG_DIR_LISTING) {    		
-		        		res->status = 200;
-		        		res->content = open_memstream(&res->content_buf, &res->content_length);
-		        		if (res->content) {
-		        			create_dir_listing(res);
-		        		} else {
-		        			res->status = 500;
-				        	create_error_page(res, req->path);
-		        		}
+            		if (global_config.flags & CONFIG_DIR_LISTING) {
+            			if (res->uri.filestat.st_atime < req->if_modified_since) {
+			            	res->status = 304;
+			            } else {
+				    		res->status = 200;
+				    		res->content = open_memstream(&res->content_buf, &res->content_length);
+				    		if (res->content) {
+				    			create_dir_listing(res);
+				    		} else {
+				    			res->status = 500;
+						    	create_error_page(res, req->path);
+				    		}			            
+			            }
             		} else {
             			res->status = 404;
             			create_error_page(res, req->path);
@@ -424,7 +454,7 @@ struct http_response *create_response(struct http_request *req) {
 void destroy_response(struct http_response *res) {
     if (!res) return;
 	destroy_uri(&res->uri);
-	fclose(res->content);
+	if (res->content) fclose(res->content);
 	if (res->content_buf) free(res->content_buf);
 	free(res);
 }

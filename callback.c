@@ -39,7 +39,12 @@ int http_response_header_callback(htt_connection_t *conn) {
     }
 
 	if (res->header_sent == res->header_length) {
-		conn->callback = &http_response_content_callback;
+		if (res->content) conn->callback = &http_response_content_callback;
+		// no content, end connection
+		else {
+			destroy_response(conn->data);
+			htt_connection_close(conn);
+		}
 	}
 	
 	return 0;

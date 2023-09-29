@@ -67,7 +67,10 @@ int htt_server_poll(void) {
 	struct epoll_event events[MAX_EVENTS];
 	
 	int nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
-	if (nfds == -1) return -1;
+	if (nfds == -1) {
+		fprintf(stderr, "epoll_wait: %s\n", strerror(errno));
+		return -1;
+	}
 	
 	for (int i = 0; i < nfds; ++i) {
 		htt_connection_t *cdata = events[i].data.ptr;
