@@ -59,4 +59,13 @@ int save_config(const char *path);
  */
 int load_config(const char *path);
 
+/**
+ * @brief Parse a configuration option
+ * @details The format of the option is `option=value`
+ *
+ * @param opt the option string to parse
+ * @return 1 if valid config option was found, 0 if not
+ */
+int parse_config_option(const char *opt);
+
 #endif // CONFIG_H

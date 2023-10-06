@@ -15,8 +15,11 @@
 #include "mime-types.h"
 
 // this will accept arguments some day...
-int main(void) {
+int main(int, char *argv[]) {
 	load_default_config();
+	
+	for (char **arg = argv + 1; *arg; ++arg) parse_config_option(*arg);
+	
 	load_mime_type_list();
 
 	int server_fd = socket(PF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
