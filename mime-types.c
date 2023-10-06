@@ -17,7 +17,7 @@ void load_mime_type_list(void) {
 	}
 	
 	char *key, *value;
-	while (fscanf(fp, "\"%m[^\"]\"=\"%m[^\"]\"\n", &key, &value) == 2) {
+	while (fscanf(fp, "%m[^=]=%ms\n", &key, &value) == 2) {
 		htt_trie_insert(mime_type_trie, key, value);
 		free(key);
 	}
