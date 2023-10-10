@@ -100,10 +100,11 @@ struct http_request parse_http_request(char *http_header) {
     
     // start parsing header entries
     // skip first line
-    strtok(http_header, "\r\n");
+    char *saveptr;
+    strtok_r(http_header, "\r\n", &saveptr);
     {
     	char *entry;
-    	while ((entry = strtok(NULL, "\r\n"))) {
+    	while ((entry = strtok_r(NULL, "\r\n", &saveptr))) {
     		parse_http_request_entry(&res, entry);
     	}
     }
@@ -180,7 +181,8 @@ static struct URI parse_uri(char *path) {
     struct URI ret = {0};
     
     if (*path == '/') ++path;
-    strtok(path, "?"); // tokenize query
+    char *saveptr;
+    strtok_r(path, "?", &saveptr); // tokenize query
     if (*path == '\0') path = "index.html"; // path is root
 
     // replace passed in path with decoded path
@@ -252,7 +254,7 @@ static struct URI parse_uri(char *path) {
     ret.path[path_len] = '\0';
 
     // decode query
-    char *query = strtok(NULL, "?");
+    char *query = strtok_r(NULL, "?", &saveptr);
     if (query) {
         ret.query = decode_percent_encoding(query, NULL);
         if (!ret.query) {
