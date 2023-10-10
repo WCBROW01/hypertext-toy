@@ -3,6 +3,8 @@
 #include <limits.h>
 #include <string.h>
 #include <errno.h>
+
+#define __USE_GNU
 #include <dirent.h>
 
 #define __USE_XOPEN
@@ -359,7 +361,7 @@ static void create_dir_listing(struct http_response *res) {
 	);
 	
 	struct dirent **namelist;
-	int n = scandir(res->uri.path + 1, &namelist, NULL, alphasort);
+	int n = scandir(res->uri.path + 1, &namelist, NULL, versionsort);
 	if (n > 0) {
 		for (int i = 0; i < n; ++i) {
 			fprintf(res->content, "<a href=\"%1$s/%2$s\">%2$s</a><br>", res->uri.path, namelist[i]->d_name);
