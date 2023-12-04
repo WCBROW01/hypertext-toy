@@ -3,6 +3,8 @@
 #include <limits.h>
 #include <string.h>
 #include <errno.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #define __USE_GNU
 #include <dirent.h>
@@ -288,8 +290,6 @@ static const char *http_status_str(int status) {
     }
 }
 
-
-
 static void create_header(struct http_response *res) {
     const char *CONN_TYPE_TABLE[] = {"close", "keep-alive"};
     
@@ -311,7 +311,7 @@ static void create_header(struct http_response *res) {
     );
     
     // only send content length if the response has a body
-    if (res->content)
+    if (res->content_length > 0)
     	fprintf(fp, "Content-Length: %ld\r\n", res->content_length);
     
     // only send last modified if not an error page
@@ -329,9 +329,10 @@ static void create_header(struct http_response *res) {
 }
 
 static void create_error_page(struct http_response *res, const char *path) {
-    res->content = open_memstream(&res->content_buf, &res->content_length);
+    FILE *fp = open_memstream(&res->content_buf, &res->content_length);
+    if (!fp) return;
     fprintf(
-    	res->content,
+    	fp,
 		"<!DOCTYPE html>"
 		"<html>"
 			"<head>"
@@ -344,12 +345,14 @@ static void create_error_page(struct http_response *res, const char *path) {
 		"</html>",
 		res->status, http_status_str(res->status), path
 	);
-    fflush(res->content);
+    fclose(fp);
 }
 
 static void create_dir_listing(struct http_response *res) {
+	FILE *fp = open_memstream(&res->content_buf, &res->content_length);
+	if (!fp) return;
 	fprintf(
-		res->content,
+		fp,
 		"<!DOCTYPE html>"
 		"<html>"
 			"<head>"
@@ -364,16 +367,16 @@ static void create_dir_listing(struct http_response *res) {
 	int n = scandir(res->uri.path + 1, &namelist, NULL, versionsort);
 	if (n > 0) {
 		for (int i = 0; i < n; ++i) {
-			fprintf(res->content, "<a href=\"%1$s/%2$s\">%2$s</a><br>", res->uri.path, namelist[i]->d_name);
+			fprintf(fp, "<a href=\"%1$s/%2$s\">%2$s</a><br>", res->uri.path, namelist[i]->d_name);
 			free(namelist[i]);
 		}
 		free(namelist);
 	} else {
-		fprintf(res->content, "<p>Error creating directory listing: %s</p>", strerror(errno));
+		fprintf(fp, "<p>Error creating directory listing: %s</p>", strerror(errno));
 	}
 	
-	fprintf(res->content, "</body></html>");
-	fflush(res->content);
+	fprintf(fp, "</body></html>");
+	fclose(fp);
 }
 
 struct http_response *create_response(struct http_request *req) {
@@ -387,7 +390,8 @@ struct http_response *create_response(struct http_request *req) {
         .header_buf = NULL,
         .content_length = 0,
         .content_sent = 0,
-        .content_buf = NULL
+        .content_buf = NULL,
+        .content = -1
     };
 
     if (req->error) {
@@ -411,8 +415,8 @@ struct http_response *create_response(struct http_request *req) {
 	                	res->status = 304;
 	                } else {
 		        		res->status = 200;
-		        		res->content = fopen(res->uri.path + 1, "r");
-		        		if (res->content) {
+		        		res->content = open(res->uri.path + 1, O_RDONLY);
+		        		if (res->content != -1) {
 				        	res->content_length = res->uri.filestat.st_size;
 				        } else {
 				        	res->status = 500;
@@ -426,13 +430,7 @@ struct http_response *create_response(struct http_request *req) {
 			            	res->status = 304;
 			            } else {
 				    		res->status = 200;
-				    		res->content = open_memstream(&res->content_buf, &res->content_length);
-				    		if (res->content) {
-				    			create_dir_listing(res);
-				    		} else {
-				    			res->status = 500;
-						    	create_error_page(res, req->path);
-				    		}			            
+				    		create_dir_listing(res);
 			            }
             		} else {
             			res->status = 404;
@@ -458,7 +456,7 @@ struct http_response *create_response(struct http_request *req) {
 void destroy_response(struct http_response *res) {
     if (!res) return;
 	destroy_uri(&res->uri);
-	if (res->content) fclose(res->content);
+	if (res->content != -1) close(res->content);
 	if (res->content_buf) free(res->content_buf);
 	free(res);
 }
