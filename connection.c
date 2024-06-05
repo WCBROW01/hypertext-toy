@@ -8,9 +8,6 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-
 #include "connection.h"
 #include "http.h"
 #include "callback.h"
@@ -84,22 +81,6 @@ int htt_server_poll(void) {
 				// set nonblocking
 				int flags = fcntl(client_fd, F_GETFL, 0);
 				fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
-				
-				// Connections will have a 2 minute timeout for both send and receive
-				// TCP_CORK is also enabled since we are sending a header
-			    {
-					struct timeval timeout = {
-						.tv_sec = 120,
-						.tv_usec = 0
-					};
-					
-					setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-					setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-
-					int tcp_cork_option = 1;
-					setsockopt(client_fd, IPPROTO_TCP, TCP_CORK, &tcp_cork_option, sizeof(tcp_cork_option));
-			    }
-				
 				htt_connection_t *conn = malloc(sizeof(*conn));
 				conn->fd = client_fd;
 				struct epoll_event ev = {

@@ -24,7 +24,7 @@
 struct sized_buffer {
 	size_t cap; ///< Capacity of the buffer
     size_t len; ///< Actual length of the buffer
-    char buf[]; ///< Buffer
+    char buf[]; ///< Buffer max 8192 bytes
 };
 
 /**
@@ -103,10 +103,10 @@ struct http_response {
     size_t header_length; ///< Length of the header section of the response
     size_t header_sent; ///< Number of bytes of the header sent
     char *header_buf; ///< Header data
-    off_t content_length; ///< Length of the content section of the response
-    off_t content_sent; ///< Number of bytes of content sent
+    size_t content_length; ///< Length of the content section of the response
+    size_t content_sent; ///< Number of bytes of content sent
     char *content_buf; ///< Buffer for memory streams
-    int content; ///< file descriptor for the content
+    FILE *content; ///< stdio FILE pointer to the content
 };
 
 /**

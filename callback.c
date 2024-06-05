@@ -4,7 +4,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
-#include <sys/sendfile.h>
 
 #include "callback.h"
 #include "connection.h"
@@ -35,12 +34,12 @@ int http_response_header_callback(htt_connection_t *conn) {
 	struct http_response *res = conn->data;
 
 	ssize_t send_result;
-    while ((send_result = write(conn->fd, res->header_buf + res->header_sent, res->header_length - res->header_sent)) > 0) {
+    while ((send_result = send(conn->fd, res->header_buf + res->header_sent, res->header_length - res->header_sent, 0)) > 0) {
         res->header_sent += send_result;
     }
 
 	if (res->header_sent == res->header_length) {
-		if (res->content_length) conn->callback = &http_response_content_callback;
+		if (res->content) conn->callback = &http_response_content_callback;
 		// no content, end connection
 		else {
 			destroy_response(conn->data);
@@ -56,13 +55,12 @@ int http_response_content_callback(htt_connection_t *conn) {
 
 	ssize_t send_result;
 	do {
-		if (res->content_buf) {
-			send_result = write(conn->fd, res->content_buf, res->content_length - res->content_sent);
-			if (send_result > 0) res->content_sent += send_result;
-		} else {
-			send_result = sendfile(conn->fd, res->content, &res->content_sent, res->content_length - res->content_sent);
-		}
-	} while (send_result > 0);
+        fseek(res->content, res->content_sent, SEEK_SET);
+        char sendbuf[4096];
+        size_t buflen = fread(sendbuf, 1, sizeof(sendbuf), res->content);
+        send_result = send(conn->fd, sendbuf, buflen, 0);
+        if (send_result > 0) res->content_sent += send_result;
+    } while (send_result > 0);
 
 	if (res->content_sent == res->content_length) {
 		destroy_response(conn->data);
